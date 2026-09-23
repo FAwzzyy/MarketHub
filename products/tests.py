@@ -1,4 +1,7 @@
+from decimal import Decimal
+
 from django.contrib.auth import get_user_model
+
 from rest_framework import status
 from rest_framework.test import APITestCase
 
@@ -44,6 +47,11 @@ class ProductAPITest(APITestCase):
             status.HTTP_200_OK,
         )
 
+        self.assertEqual(
+            len(response.data),
+            1,
+        )
+
     def test_normal_user_can_list_products(self):
         self.client.force_authenticate(
             user=self.normal_user
@@ -78,6 +86,12 @@ class ProductAPITest(APITestCase):
         self.assertEqual(
             response.status_code,
             status.HTTP_201_CREATED,
+        )
+
+        self.assertTrue(
+            Product.objects.filter(
+                name="Keyboard"
+            ).exists()
         )
 
     def test_normal_user_cannot_create_product(self):
@@ -138,6 +152,13 @@ class ProductAPITest(APITestCase):
             status.HTTP_200_OK,
         )
 
+        self.product.refresh_from_db()
+
+        self.assertEqual(
+            self.product.price,
+            Decimal("1200.00"),
+        )
+
     def test_normal_user_cannot_update_product(self):
         self.client.force_authenticate(
             user=self.normal_user
@@ -170,6 +191,12 @@ class ProductAPITest(APITestCase):
             status.HTTP_204_NO_CONTENT,
         )
 
+        self.assertFalse(
+            Product.objects.filter(
+                id=self.product.id
+            ).exists()
+        )
+
     def test_normal_user_cannot_delete_product(self):
         self.client.force_authenticate(
             user=self.normal_user
@@ -182,6 +209,64 @@ class ProductAPITest(APITestCase):
         self.assertEqual(
             response.status_code,
             status.HTTP_403_FORBIDDEN,
+        )
+
+    def test_product_detail_returns_product(self):
+        response = self.client.get(
+            f"/api/products/{self.product.id}/"
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+        )
+
+        self.assertEqual(
+            response.data["id"],
+            self.product.id,
+        )
+
+        self.assertEqual(
+            response.data["name"],
+            "Laptop",
+        )
+
+    def test_product_detail_returns_404_for_nonexistent_product(self):
+        response = self.client.get(
+            "/api/products/99999/"
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_404_NOT_FOUND,
+        )
+
+    def test_product_cannot_use_nonexistent_category(self):
+        self.client.force_authenticate(
+            user=self.staff_user
+        )
+
+        response = self.client.post(
+            "/api/products/",
+            {
+                "name": "Invalid Product",
+                "description": "Invalid category",
+                "price": "100.00",
+                "stock": 10,
+                "category": 99999,
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_400_BAD_REQUEST,
+        )
+
+        self.assertFalse(
+            Product.objects.filter(
+                name="Invalid Product"
+            ).exists()
         )
 
     def test_product_cannot_have_negative_price(self):
@@ -270,4 +355,88 @@ class ProductAPITest(APITestCase):
         self.assertEqual(
             response.status_code,
             status.HTTP_201_CREATED,
+        )
+
+        product = Product.objects.get(
+            name="Out of Stock Product"
+        )
+
+        self.assertEqual(
+            product.stock,
+            0,
+        )
+
+    def test_staff_user_can_patch_stock(self):
+        self.client.force_authenticate(
+            user=self.staff_user
+        )
+
+        response = self.client.patch(
+            f"/api/products/{self.product.id}/",
+            {
+                "stock": 25,
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+        )
+
+        self.product.refresh_from_db()
+
+        self.assertEqual(
+            self.product.stock,
+            25,
+        )
+
+    def test_staff_user_cannot_update_product_with_negative_price(self):
+        self.client.force_authenticate(
+            user=self.staff_user
+        )
+
+        response = self.client.patch(
+            f"/api/products/{self.product.id}/",
+            {
+                "price": "-50.00",
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_400_BAD_REQUEST,
+        )
+
+        self.product.refresh_from_db()
+
+        self.assertEqual(
+            self.product.price,
+            Decimal("1000.00"),
+        )
+
+    def test_staff_user_cannot_update_product_with_negative_stock(self):
+        self.client.force_authenticate(
+            user=self.staff_user
+        )
+
+        response = self.client.patch(
+            f"/api/products/{self.product.id}/",
+            {
+                "stock": -5,
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_400_BAD_REQUEST,
+        )
+
+        self.product.refresh_from_db()
+
+        self.assertEqual(
+            self.product.stock,
+            10,
         )
