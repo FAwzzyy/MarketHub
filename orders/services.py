@@ -10,9 +10,12 @@ from .models import Order, OrderItem
 @transaction.atomic
 def create_order_from_cart(user):
     try:
-        cart = Cart.objects.prefetch_related(
-            "items__product"
-        ).get(user=user)
+        cart = (
+            Cart.objects
+            .prefetch_related("items__product")
+            .get(user=user)
+        )
+
     except Cart.DoesNotExist:
         raise ValidationError(
             {"detail": "Cart is empty."}
@@ -26,6 +29,17 @@ def create_order_from_cart(user):
         )
 
     for cart_item in cart_items:
+
+        if cart_item.quantity < 1:
+            raise ValidationError(
+                {
+                    "detail": (
+                        f"Invalid quantity for "
+                        f"{cart_item.product.name}."
+                    )
+                }
+            )
+
         if cart_item.product.stock < cart_item.quantity:
             raise ValidationError(
                 {
@@ -56,13 +70,21 @@ def create_order_from_cart(user):
             unit_price=unit_price,
         )
 
-        total_amount += unit_price * cart_item.quantity
+        total_amount += (
+            unit_price * cart_item.quantity
+        )
 
         product.stock -= cart_item.quantity
-        product.save(update_fields=["stock"])
+
+        product.save(
+            update_fields=["stock"]
+        )
 
     order.total_amount = total_amount
-    order.save(update_fields=["total_amount"])
+
+    order.save(
+        update_fields=["total_amount"]
+    )
 
     cart.items.all().delete()
 
