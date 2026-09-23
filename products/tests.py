@@ -440,3 +440,35 @@ class ProductAPITest(APITestCase):
             self.product.stock,
             10,
         )
+
+    def test_product_detail_does_not_allow_post(self):
+        self.client.force_authenticate(
+            user=self.staff_user
+        )
+
+        response = self.client.post(
+            f"/api/products/{self.product.id}/",
+            {
+                "name": "Invalid Method",
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_405_METHOD_NOT_ALLOWED,
+        )
+
+    def test_product_list_does_not_allow_delete(self):
+        self.client.force_authenticate(
+            user=self.staff_user
+        )
+
+        response = self.client.delete(
+            "/api/products/"
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_405_METHOD_NOT_ALLOWED,
+        )

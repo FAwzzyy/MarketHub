@@ -575,3 +575,15 @@ class CartAPITest(APITestCase):
             response.status_code,
             status.HTTP_401_UNAUTHORIZED,
         )
+
+    def test_cart_does_not_allow_post_on_cart_detail(self):
+        response = self.client.post(
+            "/api/cart/",
+            {},
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_405_METHOD_NOT_ALLOWED,
+        )

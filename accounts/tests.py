@@ -188,3 +188,68 @@ class AccountsAPITest(APITestCase):
             response.status_code,
             status.HTTP_302_FOUND,
         )
+
+    def test_user_can_obtain_jwt_token(self):
+        User.objects.create_user(
+            username="jwtuser",
+            password="testpass123",
+        )
+
+        response = self.client.post(
+            "/api/auth/token/",
+            {
+                "username": "jwtuser",
+                "password": "testpass123",
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+        )
+
+        self.assertIn(
+            "access",
+            response.data,
+        )
+
+        self.assertIn(
+            "refresh",
+            response.data,
+        )
+
+    def test_user_can_refresh_jwt_token(self):
+        User.objects.create_user(
+            username="jwtuser",
+            password="testpass123",
+        )
+
+        token_response = self.client.post(
+            "/api/auth/token/",
+            {
+                "username": "jwtuser",
+                "password": "testpass123",
+            },
+            format="json",
+        )
+
+        refresh_token = token_response.data["refresh"]
+
+        response = self.client.post(
+            "/api/auth/token/refresh/",
+            {
+                "refresh": refresh_token,
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+        )
+
+        self.assertIn(
+            "access",
+            response.data,
+        )

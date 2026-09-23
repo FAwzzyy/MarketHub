@@ -450,7 +450,6 @@ class OrderAPITest(APITestCase):
             10,
         )
 
-
     def test_unauthenticated_user_cannot_create_order(self):
         self.client.force_authenticate(
             user=None
@@ -712,4 +711,27 @@ class OrderAPITest(APITestCase):
         self.assertEqual(
             OrderItem.objects.count(),
             2,
+        )
+
+    def test_order_detail_does_not_allow_delete(self):
+        self.add_to_cart(
+            self.product,
+            1,
+        )
+
+        create_response = self.client.post(
+            "/api/orders/create/",
+            {},
+            format="json",
+        )
+
+        order_id = create_response.data["id"]
+
+        response = self.client.delete(
+            f"/api/orders/{order_id}/"
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_405_METHOD_NOT_ALLOWED,
         )
