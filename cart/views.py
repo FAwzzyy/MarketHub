@@ -47,7 +47,7 @@ def get_cart(request):
     )
 
     serializer = CartItemSerializer(
-        cart.items.all(),
+        cart.items.select_related("product"),
         many=True
     )
 

@@ -12,7 +12,7 @@ from .serializers import ProductSerializer
 def product_list(request):
 
     if request.method == "GET":
-        products = Product.objects.all()
+        products = Product.objects.select_related("category")
         serializer = ProductSerializer(products, many=True)
 
         return Response(serializer.data)
