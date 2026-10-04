@@ -1,11 +1,17 @@
+
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 
 from rest_framework import status
 from rest_framework.test import APITestCase
 
 from .models import Category, Product
+from .views import (
+    PRODUCT_DETAIL_CACHE_KEY,
+    PRODUCT_LIST_CACHE_KEY,
+)
 
 
 User = get_user_model()
@@ -14,6 +20,8 @@ User = get_user_model()
 class ProductAPITest(APITestCase):
 
     def setUp(self):
+        cache.clear()
+
         self.staff_user = User.objects.create_user(
             username="staff",
             password="testpass123",
@@ -66,6 +74,65 @@ class ProductAPITest(APITestCase):
             status.HTTP_200_OK,
         )
 
+    def test_product_list_is_cached(self):
+        response = self.client.get(
+            "/api/products/"
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+        )
+
+        cached_products = cache.get(
+            PRODUCT_LIST_CACHE_KEY
+        )
+
+        self.assertIsNotNone(
+            cached_products
+        )
+
+        self.assertEqual(
+            cached_products,
+            response.data,
+        )
+
+    def test_product_list_cache_hit_avoids_database_query(self):
+        cached_products = [
+            {
+                "id": self.product.id,
+                "name": self.product.name,
+                "description": self.product.description,
+                "price": "1000.00",
+                "stock": 10,
+                "category": self.category.id,
+                "created_at": self.product.created_at.isoformat().replace(
+                    "+00:00",
+                    "Z",
+                ),
+            }
+        ]
+
+        cache.set(
+            PRODUCT_LIST_CACHE_KEY,
+            cached_products,
+        )
+
+        with self.assertNumQueries(0):
+            response = self.client.get(
+                "/api/products/"
+            )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+        )
+
+        self.assertEqual(
+            response.data,
+            cached_products,
+        )
+
     def test_staff_user_can_create_product(self):
         self.client.force_authenticate(
             user=self.staff_user
@@ -92,6 +159,37 @@ class ProductAPITest(APITestCase):
             Product.objects.filter(
                 name="Keyboard"
             ).exists()
+        )
+
+    def test_create_product_invalidates_product_list_cache(self):
+        cache.set(
+            PRODUCT_LIST_CACHE_KEY,
+            [{"id": 999}],
+        )
+
+        self.client.force_authenticate(
+            user=self.staff_user
+        )
+
+        response = self.client.post(
+            "/api/products/",
+            {
+                "name": "Keyboard",
+                "description": "Mechanical keyboard",
+                "price": "150.00",
+                "stock": 20,
+                "category": self.category.id,
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_201_CREATED,
+        )
+
+        self.assertIsNone(
+            cache.get(PRODUCT_LIST_CACHE_KEY)
         )
 
     def test_normal_user_cannot_create_product(self):
@@ -159,6 +257,50 @@ class ProductAPITest(APITestCase):
             Decimal("1200.00"),
         )
 
+    def test_update_product_invalidates_product_caches(self):
+        cache.set(
+            PRODUCT_LIST_CACHE_KEY,
+            [{"id": self.product.id}],
+        )
+
+        cache.set(
+            PRODUCT_DETAIL_CACHE_KEY.format(
+                self.product.id
+            ),
+            {
+                "id": self.product.id,
+            },
+        )
+
+        self.client.force_authenticate(
+            user=self.staff_user
+        )
+
+        response = self.client.patch(
+            f"/api/products/{self.product.id}/",
+            {
+                "price": "1200.00",
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+        )
+
+        self.assertIsNone(
+            cache.get(PRODUCT_LIST_CACHE_KEY)
+        )
+
+        self.assertIsNone(
+            cache.get(
+                PRODUCT_DETAIL_CACHE_KEY.format(
+                    self.product.id
+                )
+            )
+        )
+
     def test_normal_user_cannot_update_product(self):
         self.client.force_authenticate(
             user=self.normal_user
@@ -197,6 +339,46 @@ class ProductAPITest(APITestCase):
             ).exists()
         )
 
+    def test_delete_product_invalidates_product_caches(self):
+        cache.set(
+            PRODUCT_LIST_CACHE_KEY,
+            [{"id": self.product.id}],
+        )
+
+        cache.set(
+            PRODUCT_DETAIL_CACHE_KEY.format(
+                self.product.id
+            ),
+            {
+                "id": self.product.id,
+            },
+        )
+
+        self.client.force_authenticate(
+            user=self.staff_user
+        )
+
+        response = self.client.delete(
+            f"/api/products/{self.product.id}/"
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_204_NO_CONTENT,
+        )
+
+        self.assertIsNone(
+            cache.get(PRODUCT_LIST_CACHE_KEY)
+        )
+
+        self.assertIsNone(
+            cache.get(
+                PRODUCT_DETAIL_CACHE_KEY.format(
+                    self.product.id
+                )
+            )
+        )
+
     def test_normal_user_cannot_delete_product(self):
         self.client.force_authenticate(
             user=self.normal_user
@@ -229,6 +411,69 @@ class ProductAPITest(APITestCase):
         self.assertEqual(
             response.data["name"],
             "Laptop",
+        )
+
+    def test_product_detail_is_cached(self):
+        response = self.client.get(
+            f"/api/products/{self.product.id}/"
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+        )
+
+        cache_key = PRODUCT_DETAIL_CACHE_KEY.format(
+            self.product.id
+        )
+
+        cached_product = cache.get(
+            cache_key
+        )
+
+        self.assertIsNotNone(
+            cached_product
+        )
+
+        self.assertEqual(
+            cached_product,
+            response.data,
+        )
+
+    def test_product_detail_cache_hit_avoids_database_query(self):
+        cached_product = {
+            "id": self.product.id,
+            "name": self.product.name,
+            "description": self.product.description,
+            "price": "1000.00",
+            "stock": 10,
+            "category": self.category.id,
+            "created_at": self.product.created_at.isoformat().replace(
+                "+00:00",
+                "Z",
+            ),
+        }
+
+        cache.set(
+            PRODUCT_DETAIL_CACHE_KEY.format(
+                self.product.id
+            ),
+            cached_product,
+        )
+
+        with self.assertNumQueries(0):
+            response = self.client.get(
+                f"/api/products/{self.product.id}/"
+            )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+        )
+
+        self.assertEqual(
+            response.data,
+            cached_product,
         )
 
     def test_product_detail_returns_404_for_nonexistent_product(self):
