@@ -5,6 +5,7 @@ from rest_framework.exceptions import ValidationError
 
 from cart.models import Cart
 from .models import Order, OrderItem
+from .tasks import send_order_confirmation
 
 
 @transaction.atomic
@@ -87,5 +88,9 @@ def create_order_from_cart(user):
     )
 
     cart.items.all().delete()
+
+    transaction.on_commit(
+        lambda: send_order_confirmation.delay(order.id)
+    )
 
     return order

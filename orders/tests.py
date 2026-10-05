@@ -1,4 +1,5 @@
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 
@@ -128,6 +129,7 @@ class OrderAPITest(APITestCase):
         )
 
         order = Order.objects.first()
+
         order_item = OrderItem.objects.get(
             order=order
         )
@@ -343,7 +345,9 @@ class OrderAPITest(APITestCase):
             10,
         )
 
-    def test_stock_is_not_changed_when_any_product_has_insufficient_stock(self):
+    def test_stock_is_not_changed_when_any_product_has_insufficient_stock(
+        self
+    ):
         self.add_to_cart(
             self.product,
             2,
@@ -597,7 +601,9 @@ class OrderAPITest(APITestCase):
             status.HTTP_401_UNAUTHORIZED,
         )
 
-    def test_order_total_is_calculated_from_unit_price_and_quantity(self):
+    def test_order_total_is_calculated_from_unit_price_and_quantity(
+        self
+    ):
         self.add_to_cart(
             self.product,
             2,
@@ -734,4 +740,36 @@ class OrderAPITest(APITestCase):
         self.assertEqual(
             response.status_code,
             status.HTTP_405_METHOD_NOT_ALLOWED,
+        )
+
+    @patch(
+        "orders.services.send_order_confirmation.delay"
+    )
+    def test_order_confirmation_task_is_scheduled_after_order_creation(
+        self,
+        mock_delay,
+    ):
+        self.add_to_cart(
+            self.product,
+            1,
+        )
+
+        with self.captureOnCommitCallbacks(
+            execute=True
+        ):
+            response = self.client.post(
+                "/api/orders/create/",
+                {},
+                format="json",
+            )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_201_CREATED,
+        )
+
+        order = Order.objects.first()
+
+        mock_delay.assert_called_once_with(
+            order.id
         )
