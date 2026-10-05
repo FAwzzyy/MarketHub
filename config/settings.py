@@ -228,16 +228,35 @@ REST_FRAMEWORK = {
 
 
 # ---------------------------------------------------------
+# Redis
+# ---------------------------------------------------------
+
+REDIS_URL = os.getenv(
+    "REDIS_URL",
+    "redis://127.0.0.1:6379/1",
+)
+
+
+# ---------------------------------------------------------
 # Redis Cache
 # ---------------------------------------------------------
 
 CACHES = {
     "default": {
         "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": "redis://127.0.0.1:6379/1",
+        "LOCATION": REDIS_URL,
         "OPTIONS": {
             "CLIENT_CLASS": "django_redis.client.DefaultClient",
         },
     },
 }
-CELERY_BROKER_URL = "redis://127.0.0.1:6379/1"
+
+
+# ---------------------------------------------------------
+# Celery
+# ---------------------------------------------------------
+
+CELERY_BROKER_URL = os.getenv(
+    "CELERY_BROKER_URL",
+    REDIS_URL,
+)
